@@ -3,6 +3,85 @@ import { ISubmittableResult, IKeyringPair } from '@polkadot/types/types';
 import { validateUnstakeSlippageLimits, StakingSlippageInfo } from '../../helpers/network/get-slippage';
 import { UnstakeParams, UnstakeResult } from './types';
 
+
+export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakeParams, signer: string): Promise<UnstakeResult> {
+  // Set defaults
+  const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
+  const allowPartialUnstaking = params.allowPartialUnstaking ?? false;
+  const disableSlippageProtection = params.disableSlippageProtection ?? false;
+
+  // Estimate transaction fee using the existing API instance
+  const unstakeFee = await estimateUnstakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
+
+  let slippageInfo: StakingSlippageInfo | undefined;
+
+  // Handle slippage protection for subnet unstaking
+  if (params.netuid !== 0 && !disableSlippageProtection) {
+
+    const slippageValidation = await validateUnstakeSlippageLimits(
+      params.amount,
+      params.netuid,
+      unstakeFee,
+      maxSlippageTolerance,
+    );
+
+    slippageInfo = slippageValidation.slippageInfo;
+
+    if (!slippageValidation.isValid) {
+      // Block transaction by default - user must explicitly disable protection
+      return {
+        success: false,
+        error: `Slippage too high: ${slippageInfo?.slippagePercentage.toFixed(4)}% exceeds tolerance ${maxSlippageTolerance}%. Set disableSlippageProtection: true to proceed anyway.`,
+        slippageInfo
+      };
+    }
+  }
+
+  // Convert amount to RAO (1 TAO = 10^9 RAO, 1 Alpha = 10^9 RAO)
+  const amountInRao = BigInt(Math.floor(parseFloat(params.amount) * 1e9));
+
+  let extrinsic;
+
+  if (params.netuid === 0) {
+    // Root unstaking - use removeStake (no slippage protection needed)
+    extrinsic = api.tx.subtensorModule.removeStake(
+      params.hotkey,
+      params.netuid,
+      amountInRao
+    );
+  } else {
+    // Calculate limit price using formula: price * (1 - maxSlippage/100)
+    // For unstaking (Alpha→TAO), we want minimum TAO we're willing to accept per Alpha
+    let limitPrice: bigint;
+
+    if (slippageInfo?.poolData?.subnetPool) {
+      const subnetPool = slippageInfo.poolData.subnetPool;
+      const slippageMultiplier = 1 - (maxSlippageTolerance / 100);
+      const limitPriceInTao = subnetPool.price.multipliedBy(slippageMultiplier);
+      limitPrice = BigInt(Math.floor(limitPriceInTao.toNumber() * 1e9));
+    } else {
+      // Fallback - this shouldn't happen if slippage validation worked
+      throw new Error('Pool data not available for limit price calculation');
+    }
+
+    extrinsic = api.tx.subtensorModule.removeStakeLimit(
+      params.hotkey,
+      params.netuid,
+      amountInRao,
+      limitPrice,
+      allowPartialUnstaking
+    );
+  }
+
+  return {
+    success: true,
+    extrinsic,
+    unstakeFee,
+    unstakedAmount: amountInRao,
+    slippageInfo
+  };
+}
+
 /**
  * Unstakes from a hotkey on a specific subnet
  * - Root unstaking (netuid 0): Uses removeStake, no slippage
@@ -14,73 +93,11 @@ export async function unstakeFromHotkey(
   params: UnstakeParams
 ): Promise<UnstakeResult> {
   try {
-    // Set defaults
-    const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
-    const allowPartialUnstaking = params.allowPartialUnstaking ?? false;
-    const disableSlippageProtection = params.disableSlippageProtection ?? false;
-
-    // Estimate transaction fee using the existing API instance
-    const unstakeFee = await estimateUnstakeFeeWithApi(api, params.hotkey, params.amount, params.netuid);
-
-    let slippageInfo: StakingSlippageInfo | undefined;
-
-    // Handle slippage protection for subnet unstaking
-    if (params.netuid !== 0 && !disableSlippageProtection) {
-
-      const slippageValidation = await validateUnstakeSlippageLimits(
-        params.amount,
-        params.netuid,
-        unstakeFee,
-        maxSlippageTolerance,
-      );
-
-      slippageInfo = slippageValidation.slippageInfo;
-
-      if (!slippageValidation.isValid) {
-        // Block transaction by default - user must explicitly disable protection
-        return {
-          success: false,
-          error: `Slippage too high: ${slippageInfo?.slippagePercentage.toFixed(4)}% exceeds tolerance ${maxSlippageTolerance}%. Set disableSlippageProtection: true to proceed anyway.`,
-          slippageInfo
-        };
-      }
+    const result = await prepareUnstakeExtrinsic(api, params, keyPair.address);
+    if (!result.success) {
+      return result;
     }
-
-    // Convert amount to RAO (1 TAO = 10^9 RAO, 1 Alpha = 10^9 RAO)
-    const amountInRao = BigInt(Math.floor(parseFloat(params.amount) * 1e9));
-
-    let extrinsic;
-
-    if (params.netuid === 0) {
-      // Root unstaking - use removeStake (no slippage protection needed)
-      extrinsic = api.tx.subtensorModule.removeStake(
-        params.hotkey,
-        params.netuid,
-        amountInRao
-      );
-    } else {
-      // Calculate limit price using formula: price * (1 - maxSlippage/100)
-      // For unstaking (Alpha→TAO), we want minimum TAO we're willing to accept per Alpha
-      let limitPrice: bigint;
-
-      if (slippageInfo?.poolData?.subnetPool) {
-        const subnetPool = slippageInfo.poolData.subnetPool;
-        const slippageMultiplier = 1 - (maxSlippageTolerance / 100);
-        const limitPriceInTao = subnetPool.price.multipliedBy(slippageMultiplier);
-        limitPrice = BigInt(Math.floor(limitPriceInTao.toNumber() * 1e9));
-      } else {
-        // Fallback - this shouldn't happen if slippage validation worked
-        throw new Error('Pool data not available for limit price calculation');
-      }
-
-      extrinsic = api.tx.subtensorModule.removeStakeLimit(
-        params.hotkey,
-        params.netuid,
-        amountInRao,
-        limitPrice,
-        allowPartialUnstaking
-      );
-    }
+    const extrinsic = result.extrinsic!;
 
     // Sign and submit transaction
     return new Promise((resolve) => {
@@ -138,15 +155,18 @@ export async function estimateUnstakeFeeWithApi(
   api: ApiPromise,
   hotkey: string,
   amount: string,
-  netuid: number
+  netuid: number,
+  signer?: string
 ): Promise<string> {
   try {
 
     const { getAccounts } = await import('../../helpers/network/get-accounts');
     const { taoToRao, raoToTao } = await import('../../helpers/validation');
 
-    const accounts = getAccounts();
-    const sourceAccount = accounts.user;
+    if (!signer) {
+      const accounts = getAccounts();
+      signer = accounts.user.address;
+    }
 
     // Create the unstake transaction for fee estimation
     const unstakeAmountRaw = taoToRao(amount);
@@ -157,7 +177,7 @@ export async function estimateUnstakeFeeWithApi(
     );
 
     // Get payment info for fee estimation
-    const paymentInfo = await unstakeTransaction.paymentInfo(sourceAccount);
+    const paymentInfo = await unstakeTransaction.paymentInfo(signer);
     const estimatedFee = raoToTao(paymentInfo.partialFee.toString());
 
     return estimatedFee;

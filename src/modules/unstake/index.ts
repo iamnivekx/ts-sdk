@@ -5,6 +5,10 @@ import { calculateUnstakeSlippage } from '../../helpers/network/get-slippage';
 import { ApiManager } from '../../helpers/network/api-manager';
 import { UnstakeResult, UnstakeFromRootParams, UnstakeAlphaParams, UnstakeEstimate } from './types';
 
+// Re-export types
+export * from './types';
+// Re-export unstake functions
+export * from './unstake';
 
 /**
  * Unstake module class that handles TAO and Alpha unstaking operations

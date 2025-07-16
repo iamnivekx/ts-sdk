@@ -1,10 +1,10 @@
 {
   "name": "@taostats/sdk",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Taostats SDK for Bittensor",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
-  "browser": "dist/src/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/index.js",
   "engines": {
     "node": ">=22.3.0"
   },
@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --project tsconfig.build.json",
     "build:browser": "tsc --target es2020 --module esnext --outDir dist/esm && tsc --target es5 --module commonjs --outDir dist/cjs",
     "build:watch": "tsc --watch",
     "test": "jest",

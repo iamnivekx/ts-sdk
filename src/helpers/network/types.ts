@@ -1,5 +1,6 @@
 import { StorageKey } from '@polkadot/types';
-import { AnyTuple, Codec } from '@polkadot/types/types';
+import { AnyTuple, Codec, ISubmittableResult } from '@polkadot/types/types';
+import { SubmittableExtrinsic } from '@polkadot/api/types';
 import BigNumber from './bignumber';
 
 export type StorageEntry = [StorageKey<AnyTuple>, Codec];
@@ -13,3 +14,6 @@ export type PoolPrice = {
   alphaEmission: BigNumber;
   taoEmission: BigNumber;
 };
+
+
+export type SignableExtrinsic = SubmittableExtrinsic<'promise', ISubmittableResult>;

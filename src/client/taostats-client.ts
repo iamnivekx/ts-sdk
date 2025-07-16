@@ -18,6 +18,7 @@ import { SubnetsModule } from '../modules/subnets';
 import { MetagraphModule } from '../modules/metagraph';
 import { ValidatorsModule } from '../modules/validators';
 import { ApiManager } from '../helpers/network/api-manager';
+import { ApiPromise } from '@polkadot/api';
 
 export class TaoStatsClient {
   private httpClient: HttpClient;
@@ -63,5 +64,20 @@ export class TaoStatsClient {
    */
   async getHealth(): Promise<ApiResponse<{ status: string; timestamp: string }>> {
     return this.httpClient.get<{ status: string; timestamp: string }>('/api/status/v1');
+  }
+
+  /**
+   * Get the API manager instance
+   */
+  getApiManger(): ApiManager {
+    return ApiManager.getInstance(this.httpClient);
+  }
+
+  /**
+   * Get the API instance, reusing existing connection if RPC URL hasn't changed
+   */
+  getApi(): Promise<ApiPromise> {
+    const apiManager = this.getApiManger();
+    return apiManager.getApi();
   }
 } 

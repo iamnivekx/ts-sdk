@@ -4,7 +4,12 @@ import { StakeToRootParams, StakeAlphaParams, StakeEstimate, StakeResult } from 
 import { getAccounts } from '../../helpers/network/get-accounts';
 import { calculateStakeSlippage } from '../../helpers/network/get-slippage';
 import { ApiManager } from '../../helpers/network/api-manager';
+import { ApiPromise } from '@polkadot/api';
 
+// Re-export types
+export * from './types';
+// Re-export stake functions
+export * from './stake';
 
 /**
  * Stake module class that handles TAO and Alpha staking operations
@@ -19,10 +24,18 @@ export class StakeModule {
   }
 
   /**
+   * 
+   * @returns 
+   */
+  async getApi(): Promise<ApiPromise> {
+    return this.apiManager.getApi();
+  }
+
+  /**
    * Stake TAO to a validator/miner on root network (netuid 0)
    */
   async toRoot(params: StakeToRootParams): Promise<StakeResult> {
-    const api = await this.apiManager.getApi();
+    const api = await this.getApi()
     const accounts = getAccounts();
 
     return stakeToRoot(

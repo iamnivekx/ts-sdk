@@ -1,7 +1,11 @@
-import { StakingSlippageInfo } from "../../helpers/network/get-slippage";
+
+import type { StakingSlippageInfo } from "../../helpers/network/get-slippage";
+import type { SignableExtrinsic } from "../../helpers/network/types";
+
 
 
 export interface StakeToRootParams {
+  signer?: string;
   hotkey: string;
   amount: string;
   fromAddress?: string;
@@ -41,6 +45,8 @@ export interface StakeParams {
 
 export interface StakeResult {
   success: boolean;
+  extrinsic?: SignableExtrinsic;
+  stakeFee?: string;
   txHash?: string;
   stakedAmount?: string; // Net amount staked in TAO (intended amount - transaction fee)
   slippageInfo?: StakingSlippageInfo;

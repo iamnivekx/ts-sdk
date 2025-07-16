@@ -2,7 +2,101 @@ import { ApiPromise } from '@polkadot/api';
 import { ISubmittableResult, IKeyringPair } from '@polkadot/types/types';
 import { validateStakeSlippageLimits, StakingSlippageInfo } from '../../helpers/network/get-slippage';
 import BigNumber from '../../helpers/network/bignumber';
+import { getAccounts } from '../../helpers/network/get-accounts';
+import { taoToRao, raoToTao } from '../../helpers/validation';
 import { StakeParams, StakeResult } from './types';
+
+
+/**
+ * Prepare the extrinsic for staking to a hotkey
+ * @param api - ApiPromise
+ * @param params - StakeParams
+ * @param signer - Signer address
+ * @returns StakeResult
+ */
+export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams, signer: string): Promise<StakeResult> {
+  // Set defaults
+  const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
+  const allowPartialStaking = params.allowPartialStaking ?? false;
+  const disableSlippageProtection = params.disableSlippageProtection ?? false;
+
+  // Estimate transaction fee using the existing API instance
+  const stakeFee = await estimateStakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
+
+  // Calculate actual staked amount (intended amount - transaction fee)
+  const actualStakedAmount = (parseFloat(params.amount) - parseFloat(stakeFee)).toString();
+
+  let slippageInfo: StakingSlippageInfo | undefined;
+
+  // Handle slippage protection for subnet staking
+  if (params.netuid !== 0 && !disableSlippageProtection) {
+
+    const slippageValidation = await validateStakeSlippageLimits(
+      params.amount,
+      params.netuid,
+      stakeFee,
+      maxSlippageTolerance,
+    );
+
+    slippageInfo = slippageValidation.slippageInfo;
+
+    if (!slippageValidation.isValid) {
+      // Block transaction by default - user must explicitly disable protection
+      return {
+        success: false,
+        error: `Slippage too high: ${slippageInfo?.slippagePercentage.toFixed(4)}% exceeds tolerance ${maxSlippageTolerance}%. Set disableSlippageProtection: true to proceed anyway.`,
+        stakedAmount: actualStakedAmount,
+        slippageInfo
+      };
+    }
+
+  }
+
+  // Convert amount to RAO (1 TAO = 10^9 RAO)
+  const amountInRao = BigInt(Math.floor(parseFloat(params.amount) * 1e9));
+
+  let extrinsic;
+
+  if (params.netuid === 0) {
+    // Root staking - use addStake (no slippage protection needed)
+    extrinsic = api.tx.subtensorModule.addStake(
+      params.hotkey,
+      params.netuid,
+      amountInRao
+    );
+  } else {
+    // For staking (TAO→Alpha), we want minimum Alpha we're willing to accept per TAO
+    // subnetPool.price is TAO per Alpha, so we need the inverse (Alpha per TAO)
+    let limitPrice: bigint;
+
+    if (slippageInfo?.poolData?.subnetPool) {
+      const subnetPool = slippageInfo.poolData.subnetPool;
+      // Alpha per TAO = 1 / (TAO per Alpha)
+      const alphaPerTao = new BigNumber(1).dividedBy(subnetPool.price);
+      const slippageMultiplier = 1 - (maxSlippageTolerance / 100);
+      const limitPriceInAlpha = alphaPerTao.multipliedBy(slippageMultiplier);
+      limitPrice = BigInt(Math.floor(limitPriceInAlpha.toNumber() * 1e9));
+    } else {
+      // Fallback - this shouldn't happen if slippage validation worked
+      throw new Error('Pool data not available for limit price calculation');
+    }
+
+    extrinsic = api.tx.subtensorModule.addStakeLimit(
+      params.hotkey,
+      params.netuid,
+      amountInRao,
+      limitPrice,
+      allowPartialStaking
+    );
+  }
+  return {
+    success: true,
+    extrinsic,
+    stakeFee,
+    stakedAmount: actualStakedAmount,
+    slippageInfo
+  };
+}
 
 /**
  * Stakes to a hotkey on a specific subnet
@@ -15,81 +109,12 @@ export async function stakeToHotkey(
   params: StakeParams
 ): Promise<StakeResult> {
   try {
-
-    // Set defaults
-    const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
-    const allowPartialStaking = params.allowPartialStaking ?? false;
-    const disableSlippageProtection = params.disableSlippageProtection ?? false;
-
-    // Estimate transaction fee using the existing API instance
-    const stakeFee = await estimateStakeFeeWithApi(api, params.hotkey, params.amount, params.netuid);
-
-    // Calculate actual staked amount (intended amount - transaction fee)
-    const actualStakedAmount = (parseFloat(params.amount) - parseFloat(stakeFee)).toString();
-
-    let slippageInfo: StakingSlippageInfo | undefined;
-
-    // Handle slippage protection for subnet staking
-    if (params.netuid !== 0 && !disableSlippageProtection) {
-
-      const slippageValidation = await validateStakeSlippageLimits(
-        params.amount,
-        params.netuid,
-        stakeFee,
-        maxSlippageTolerance,
-      );
-
-      slippageInfo = slippageValidation.slippageInfo;
-
-      if (!slippageValidation.isValid) {
-        // Block transaction by default - user must explicitly disable protection
-        return {
-          success: false,
-          error: `Slippage too high: ${slippageInfo?.slippagePercentage.toFixed(4)}% exceeds tolerance ${maxSlippageTolerance}%. Set disableSlippageProtection: true to proceed anyway.`,
-          stakedAmount: actualStakedAmount,
-          slippageInfo
-        };
-      }
-
+    const result = await prepareStakeExtrinsic(api, params, keyPair.address);
+    if (!result.success) {
+      return result;
     }
-
-    // Convert amount to RAO (1 TAO = 10^9 RAO)
-    const amountInRao = BigInt(Math.floor(parseFloat(params.amount) * 1e9));
-
-    let extrinsic;
-
-    if (params.netuid === 0) {
-      // Root staking - use addStake (no slippage protection needed)
-      extrinsic = api.tx.subtensorModule.addStake(
-        params.hotkey,
-        params.netuid,
-        amountInRao
-      );
-    } else {
-      // For staking (TAO→Alpha), we want minimum Alpha we're willing to accept per TAO
-      // subnetPool.price is TAO per Alpha, so we need the inverse (Alpha per TAO)
-      let limitPrice: bigint;
-
-      if (slippageInfo?.poolData?.subnetPool) {
-        const subnetPool = slippageInfo.poolData.subnetPool;
-        // Alpha per TAO = 1 / (TAO per Alpha)
-        const alphaPerTao = new BigNumber(1).dividedBy(subnetPool.price);
-        const slippageMultiplier = 1 - (maxSlippageTolerance / 100);
-        const limitPriceInAlpha = alphaPerTao.multipliedBy(slippageMultiplier);
-        limitPrice = BigInt(Math.floor(limitPriceInAlpha.toNumber() * 1e9));
-      } else {
-        // Fallback - this shouldn't happen if slippage validation worked
-        throw new Error('Pool data not available for limit price calculation');
-      }
-
-      extrinsic = api.tx.subtensorModule.addStakeLimit(
-        params.hotkey,
-        params.netuid,
-        amountInRao,
-        limitPrice,
-        allowPartialStaking
-      );
-    }
+    const extrinsic = result.extrinsic!;
+    const actualStakedAmount = result.stakedAmount!;
 
     // Sign and submit transaction
     return new Promise((resolve) => {
@@ -151,15 +176,14 @@ export async function estimateStakeFeeWithApi(
   api: ApiPromise,
   hotkey: string,
   amount: string,
-  netuid: number
+  netuid: number,
+  signer?: string
 ): Promise<string> {
   try {
-
-    const { getAccounts } = await import('../../helpers/network/get-accounts');
-    const { taoToRao, raoToTao } = await import('../../helpers/validation');
-
-    const accounts = getAccounts();
-    const sourceAccount = accounts.user;
+    if (!signer) {
+      const accounts = getAccounts();
+      signer = accounts.user.address;
+    }
 
     // Create the stake transaction for fee estimation
     const stakeAmountRaw = taoToRao(amount);
@@ -170,7 +194,7 @@ export async function estimateStakeFeeWithApi(
     );
 
     // Get payment info for fee estimation
-    const paymentInfo = await stakeTransaction.paymentInfo(sourceAccount);
+    const paymentInfo = await stakeTransaction.paymentInfo(signer);
     const estimatedFee = raoToTao(paymentInfo.partialFee.toString());
 
     return estimatedFee;

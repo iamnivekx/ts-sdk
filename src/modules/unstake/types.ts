@@ -1,4 +1,5 @@
 import { StakingSlippageInfo } from "../../helpers/network/get-slippage";
+import type { SignableExtrinsic } from "../../helpers/network/types";
 
 export interface UnstakeParams {
   hotkey: string;
@@ -11,6 +12,9 @@ export interface UnstakeParams {
 
 export interface UnstakeResult {
   success: boolean;
+  extrinsic?: SignableExtrinsic;
+  unstakeFee?: string;
+  unstakedAmount?: bigint;
   txHash?: string;
   slippageInfo?: StakingSlippageInfo;
   error?: string;

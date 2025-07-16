@@ -23,6 +23,7 @@ export * from './modules/metagraph'
 export * from './modules/validators'
 // Utility exports
 export * from './helpers/constants';
+export * from './helpers/network';
 
 // Default export
 export { TaoStatsClient as default } from './client/taostats-client'; 

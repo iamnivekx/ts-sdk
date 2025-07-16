@@ -1,4 +1,5 @@
 // Network utilities
+export { ApiManager } from './api-manager';
 export { decodeNumeric } from './decode-numeric';
 export type { StorageEntries, StorageKeys, PoolPrice } from './types';
 

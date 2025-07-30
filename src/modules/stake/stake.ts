@@ -5,6 +5,7 @@ import BigNumber from '../../helpers/network/bignumber';
 import { getAccounts } from '../../helpers/network/get-accounts';
 import { taoToRao, raoToTao } from '../../helpers/validation';
 import { StakeParams, StakeResult } from './types';
+import type { PoolPrice } from '../../helpers/network/types';
 
 
 /**
@@ -12,16 +13,17 @@ import { StakeParams, StakeResult } from './types';
  * @param api - ApiPromise
  * @param params - StakeParams
  * @param signer - Signer address
- * @returns StakeResult
+ * @returns StakeResult  
  */
-export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams, signer: string): Promise<StakeResult> {
+export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams, signer?: string, subnetPool?: PoolPrice): Promise<StakeResult> {
   // Set defaults
   const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
   const allowPartialStaking = params.allowPartialStaking ?? false;
   const disableSlippageProtection = params.disableSlippageProtection ?? false;
 
   // Estimate transaction fee using the existing API instance
-  const stakeFee = await estimateStakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
+  let stakeFee = '0';
+  if (signer) stakeFee = await estimateStakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
 
   // Calculate actual staked amount (intended amount - transaction fee)
   const actualStakedAmount = (parseFloat(params.amount) - parseFloat(stakeFee)).toString();
@@ -36,6 +38,7 @@ export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams
       params.netuid,
       stakeFee,
       maxSlippageTolerance,
+      subnetPool,
     );
 
     slippageInfo = slippageValidation.slippageInfo;

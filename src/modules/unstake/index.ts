@@ -4,6 +4,7 @@ import { getAccounts } from '../../helpers/network/get-accounts';
 import { calculateUnstakeSlippage } from '../../helpers/network/get-slippage';
 import { ApiManager } from '../../helpers/network/api-manager';
 import { UnstakeResult, UnstakeFromRootParams, UnstakeAlphaParams, UnstakeEstimate } from './types';
+import type { PoolPrice } from '../../helpers/network/types';
 
 // Re-export types
 export * from './types';
@@ -58,7 +59,7 @@ export class UnstakeModule {
   /**
    * Estimate the total cost of an unstake operation including transaction fee and slippage
    */
-  async estimateUnstake(hotkey: string, amount: string, subnet: number = 0): Promise<UnstakeEstimate> {
+  async estimateUnstake(hotkey: string, amount: string, subnet: number = 0, subnetPool?: PoolPrice): Promise<UnstakeEstimate> {
     const api = await this.apiManager.getApi();
 
     // Get transaction fee using existing API connection
@@ -73,7 +74,7 @@ export class UnstakeModule {
     } else {
       // Subnet unstaking - calculate slippage cost (Alpha→TAO conversion)
       try {
-        const slippageInfo = await calculateUnstakeSlippage(amount, subnet, transactionFee);
+        const slippageInfo = await calculateUnstakeSlippage(amount, subnet, transactionFee, subnetPool);
 
         // idealAmount is the ideal TAO we should get, receivedAmount is actual TAO after fees
         const idealTaoValue = parseFloat(slippageInfo.idealAmount); // Ideal TAO value

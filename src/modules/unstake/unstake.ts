@@ -1,17 +1,19 @@
 import { ApiPromise } from '@polkadot/api';
 import { ISubmittableResult, IKeyringPair } from '@polkadot/types/types';
 import { validateUnstakeSlippageLimits, StakingSlippageInfo } from '../../helpers/network/get-slippage';
-import { UnstakeParams, UnstakeResult } from './types';
+import type { UnstakeParams, UnstakeResult } from './types';
+import type { PoolPrice } from '../../helpers/network/types';
 
 
-export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakeParams, signer: string): Promise<UnstakeResult> {
+export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakeParams, signer?: string, subnetPool?: PoolPrice): Promise<UnstakeResult> {
   // Set defaults
   const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
   const allowPartialUnstaking = params.allowPartialUnstaking ?? false;
   const disableSlippageProtection = params.disableSlippageProtection ?? false;
 
   // Estimate transaction fee using the existing API instance
-  const unstakeFee = await estimateUnstakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
+  let unstakeFee = '0';
+  if (signer) unstakeFee = await estimateUnstakeFeeWithApi(api, params.hotkey, params.amount, params.netuid, signer);
 
   let slippageInfo: StakingSlippageInfo | undefined;
 
@@ -23,6 +25,7 @@ export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakePa
       params.netuid,
       unstakeFee,
       maxSlippageTolerance,
+      subnetPool
     );
 
     slippageInfo = slippageValidation.slippageInfo;
@@ -156,7 +159,7 @@ export async function estimateUnstakeFeeWithApi(
   hotkey: string,
   amount: string,
   netuid: number,
-  signer?: string
+  signer?: string,
 ): Promise<string> {
   try {
 

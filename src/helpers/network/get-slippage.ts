@@ -1,6 +1,7 @@
 import { getPoolPrices } from './get-pool-prices';
 import BigNumber from './bignumber';
 import { AlphaTransferParams, SlippageInfo } from '../../modules/transfer/types';
+import type { PoolPrice } from './types';
 
 export interface StakingSlippageInfo {
   slippagePercentage: number;
@@ -17,7 +18,8 @@ export interface StakingSlippageInfo {
 export async function calculateStakeSlippage(
   taoAmount: string,
   netuid: number,
-  stakeFee: string
+  stakeFee: string,
+  subnetPool?: PoolPrice
 ): Promise<StakingSlippageInfo> {
   try {
     if (netuid === 0) {
@@ -30,9 +32,11 @@ export async function calculateStakeSlippage(
       };
     }
 
-    // Subnet staking - TAO → Alpha conversion
-    const poolPricesMap = await getPoolPrices();
-    const subnetPool = poolPricesMap.get(netuid);
+    if (!subnetPool) {
+      // Subnet staking - TAO → Alpha conversion
+      const poolPricesMap = await getPoolPrices();
+      subnetPool = poolPricesMap.get(netuid);
+    }
 
     if (!subnetPool) {
       throw new Error(`Pool data not available for subnet ${netuid}`);
@@ -84,7 +88,8 @@ export async function calculateStakeSlippage(
 export async function calculateUnstakeSlippage(
   alphaAmount: string,
   netuid: number,
-  unstakeFee: string
+  unstakeFee: string,
+  subnetPool?: PoolPrice
 ): Promise<StakingSlippageInfo> {
   try {
     if (netuid === 0) {
@@ -96,9 +101,11 @@ export async function calculateUnstakeSlippage(
       };
     }
 
-    // Subnet unstaking - Alpha → TAO conversion
-    const poolPricesMap = await getPoolPrices();
-    const subnetPool = poolPricesMap.get(netuid);
+    if (!subnetPool) {
+      // Subnet unstaking - Alpha → TAO conversion
+      const poolPricesMap = await getPoolPrices();
+      subnetPool = poolPricesMap.get(netuid);
+    }
 
     if (!subnetPool) {
       throw new Error(`Pool data not available for subnet ${netuid}`);
@@ -154,9 +161,10 @@ export async function validateStakeSlippageLimits(
   netuid: number,
   stakeFee: string,
   maxSlippageTolerance: number,
+  subnetPool?: PoolPrice
 ): Promise<{ isValid: boolean; slippageInfo?: StakingSlippageInfo; error?: string }> {
   try {
-    const slippageInfo = await calculateStakeSlippage(taoAmount, netuid, stakeFee);
+    const slippageInfo = await calculateStakeSlippage(taoAmount, netuid, stakeFee, subnetPool);
 
     if (slippageInfo.slippagePercentage > maxSlippageTolerance) {
       return {
@@ -187,9 +195,10 @@ export async function validateUnstakeSlippageLimits(
   netuid: number,
   unstakeFee: string,
   maxSlippageTolerance: number,
+  subnetPool?: PoolPrice
 ): Promise<{ isValid: boolean; slippageInfo?: StakingSlippageInfo; error?: string }> {
   try {
-    const slippageInfo = await calculateUnstakeSlippage(alphaAmount, netuid, unstakeFee);
+    const slippageInfo = await calculateUnstakeSlippage(alphaAmount, netuid, unstakeFee, subnetPool);
 
     if (slippageInfo.slippagePercentage > maxSlippageTolerance) {
       return {

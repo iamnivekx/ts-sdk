@@ -5,6 +5,7 @@ import { getAccounts } from '../../helpers/network/get-accounts';
 import { calculateStakeSlippage } from '../../helpers/network/get-slippage';
 import { ApiManager } from '../../helpers/network/api-manager';
 import { ApiPromise } from '@polkadot/api';
+import type { PoolPrice } from '../../helpers/network/types';
 
 // Re-export types
 export * from './types';
@@ -67,7 +68,7 @@ export class StakeModule {
   /**
    * Estimate the total cost of a stake operation including transaction fee and slippage
    */
-  async estimateStake(hotkey: string, amount: string, subnet: number = 0): Promise<StakeEstimate> {
+  async estimateStake(hotkey: string, amount: string, subnet: number = 0, subnetPool?: PoolPrice): Promise<StakeEstimate> {
     const api = await this.apiManager.getApi();
 
     // Get transaction fee using existing API connection
@@ -83,7 +84,7 @@ export class StakeModule {
     } else {
       // Subnet staking - calculate slippage cost (TAO→Alpha conversion)
       try {
-        const slippageInfo = await calculateStakeSlippage(amount, subnet, transactionFee);
+        const slippageInfo = await calculateStakeSlippage(amount, subnet, transactionFee, subnetPool);
 
         // idealAmount and receivedAmount are both in TAO-equivalent terms from slippage calculation
         const idealTaoValue = parseFloat(slippageInfo.idealAmount); // TAO input

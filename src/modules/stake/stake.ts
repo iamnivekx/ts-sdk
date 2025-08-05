@@ -17,7 +17,7 @@ import type { PoolPrice } from '../../helpers/network/types';
  */
 export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams, signer?: string, subnetPool?: PoolPrice): Promise<StakeResult> {
   // Set defaults
-  const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
+  let maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
   const allowPartialStaking = params.allowPartialStaking ?? false;
   const disableSlippageProtection = params.disableSlippageProtection ?? false;
 
@@ -51,6 +51,10 @@ export async function prepareStakeExtrinsic(api: ApiPromise, params: StakeParams
         stakedAmount: actualStakedAmount,
         slippageInfo
       };
+    }
+
+    if (!maxSlippageTolerance) {
+      maxSlippageTolerance = slippageInfo?.slippagePercentage ?? 0.05;
     }
 
   }

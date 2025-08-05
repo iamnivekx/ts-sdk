@@ -166,7 +166,7 @@ export async function validateStakeSlippageLimits(
   try {
     const slippageInfo = await calculateStakeSlippage(taoAmount, netuid, stakeFee, subnetPool);
 
-    if (slippageInfo.slippagePercentage > maxSlippageTolerance) {
+    if (maxSlippageTolerance && slippageInfo.slippagePercentage > maxSlippageTolerance) {
       return {
         isValid: false,
         slippageInfo,
@@ -199,8 +199,8 @@ export async function validateUnstakeSlippageLimits(
 ): Promise<{ isValid: boolean; slippageInfo?: StakingSlippageInfo; error?: string }> {
   try {
     const slippageInfo = await calculateUnstakeSlippage(alphaAmount, netuid, unstakeFee, subnetPool);
-
-    if (slippageInfo.slippagePercentage > maxSlippageTolerance) {
+    // automatically allow n% slippage
+    if (maxSlippageTolerance && slippageInfo.slippagePercentage > maxSlippageTolerance) {
       return {
         isValid: false,
         slippageInfo,

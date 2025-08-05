@@ -7,7 +7,7 @@ import type { PoolPrice } from '../../helpers/network/types';
 
 export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakeParams, signer?: string, subnetPool?: PoolPrice): Promise<UnstakeResult> {
   // Set defaults
-  const maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
+  let maxSlippageTolerance = params.maxSlippageTolerance ?? 0.05; // default: 0.05 for 5%
   const allowPartialUnstaking = params.allowPartialUnstaking ?? false;
   const disableSlippageProtection = params.disableSlippageProtection ?? false;
 
@@ -37,6 +37,10 @@ export async function prepareUnstakeExtrinsic(api: ApiPromise, params: UnstakePa
         error: `Slippage too high: ${slippageInfo?.slippagePercentage.toFixed(4)}% exceeds tolerance ${maxSlippageTolerance}%. Set disableSlippageProtection: true to proceed anyway.`,
         slippageInfo
       };
+    }
+
+    if (!maxSlippageTolerance) {
+      maxSlippageTolerance = slippageInfo?.slippagePercentage ?? 0.05;
     }
   }
 
